@@ -20,7 +20,7 @@ class KeySignal(QObject):
 
 
 class MacroRow(QWidget):
-    def __init__(self, entry, edit_callback):
+    def __init__(self, entry):
         super().__init__()
         self.entry = entry
 
@@ -30,7 +30,6 @@ class MacroRow(QWidget):
         self.label = QLabel()
         self.edit_btn = QPushButton("✏️")
         self.edit_btn.setFixedWidth(34)
-        self.edit_btn.clicked.connect(edit_callback)
 
         layout.addWidget(self.label)
         layout.addStretch()
@@ -224,10 +223,13 @@ class MacroApp(QWidget):
         self.list_widget.clear()
         for entry in self.macros:
             item = QListWidgetItem()
-            row_widget = MacroRow(
-                entry,
-                lambda e=entry: self.edit_entry(e)
+            row_widget = MacroRow(entry)
+
+            # SAFE binding
+            row_widget.edit_btn.clicked.connect(
+                lambda _, e=entry: self.edit_entry(e)
             )
+
             item.setSizeHint(row_widget.sizeHint())
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, row_widget)
