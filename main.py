@@ -28,13 +28,13 @@ class MacroRow(QWidget):
         layout.setContentsMargins(6, 2, 6, 2)
 
         self.label = QLabel()
-        edit_btn = QPushButton("✏️")
-        edit_btn.setFixedWidth(34)
-        edit_btn.clicked.connect(edit_callback)
+        self.edit_btn = QPushButton("✏️")
+        self.edit_btn.setFixedWidth(34)
+        self.edit_btn.clicked.connect(edit_callback)
 
         layout.addWidget(self.label)
         layout.addStretch()
-        layout.addWidget(edit_btn)
+        layout.addWidget(self.edit_btn)
 
         self.refresh()
 
@@ -50,9 +50,9 @@ class MacroApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Macro Editor")
-        self.resize(540, 400)
+        self.resize(560, 420)
 
-        # ---------- Styling ----------
+        # ---------- Style ----------
         self.setStyleSheet("""
         QWidget {
             background-color: #1e1e1e;
@@ -89,23 +89,26 @@ class MacroApp(QWidget):
         self.list_widget = QListWidget()
         self.list_widget.setDragDropMode(QListWidget.InternalMove)
 
-        buttons = QHBoxLayout()
+        btns = QHBoxLayout()
         self.add_btn = QPushButton("Add")
+        self.remove_btn = QPushButton("Remove Selected")
         self.settings_btn = QPushButton("Settings")
         self.start_btn = QPushButton()
         self.stop_btn = QPushButton()
 
-        buttons.addWidget(self.add_btn)
-        buttons.addWidget(self.settings_btn)
-        buttons.addStretch()
-        buttons.addWidget(self.start_btn)
-        buttons.addWidget(self.stop_btn)
+        btns.addWidget(self.add_btn)
+        btns.addWidget(self.remove_btn)
+        btns.addWidget(self.settings_btn)
+        btns.addStretch()
+        btns.addWidget(self.start_btn)
+        btns.addWidget(self.stop_btn)
 
         layout.addWidget(self.list_widget)
-        layout.addLayout(buttons)
+        layout.addLayout(btns)
 
         # ---------- Connections ----------
         self.add_btn.clicked.connect(self.add_key)
+        self.remove_btn.clicked.connect(self.remove_selected)
         self.settings_btn.clicked.connect(self.open_settings)
         self.start_btn.clicked.connect(self.start_macro)
         self.stop_btn.clicked.connect(self.stop_macro)
@@ -139,7 +142,7 @@ class MacroApp(QWidget):
         })
         self.hotkeys.start()
 
-    # ---------- Add key ----------
+    # ---------- Add ----------
     def add_key(self):
         QMessageBox.information(self, "Add Key", "Press a key")
 
@@ -181,7 +184,7 @@ class MacroApp(QWidget):
         self.save_config()
 
     # ---------- Edit ----------
-    def edit_entry(self, entry, row):
+    def edit_entry(self, entry):
         delay, ok = QInputDialog.getDouble(
             self, "Edit Delay", "Seconds:", entry["delay"], 0.0, 60.0, 2
         )
@@ -189,20 +192,27 @@ class MacroApp(QWidget):
             return
 
         repeat, ok = QInputDialog.getInt(
-            self, "Edit Repeat",
-            "-1 = loop forever",
-            entry.get("repeat", -1),
-            -1, 9999
+            self, "Edit Repeat", "-1 = loop forever",
+            entry.get("repeat", -1), -1, 9999
         )
         if not ok:
             return
 
         entry["delay"] = delay
         entry["repeat"] = repeat
-        row.refresh()
+        self.refresh_list()
         self.save_config()
 
-    # ---------- Macro control ----------
+    # ---------- Remove ----------
+    def remove_selected(self):
+        row = self.list_widget.currentRow()
+        if row < 0:
+            return
+        self.macros.pop(row)
+        self.refresh_list()
+        self.save_config()
+
+    # ---------- Macro ----------
     def start_macro(self):
         self.runner.start(self.macros)
 
@@ -214,17 +224,13 @@ class MacroApp(QWidget):
         self.list_widget.clear()
         for entry in self.macros:
             item = QListWidgetItem()
-            row = MacroRow(
+            row_widget = MacroRow(
                 entry,
-                lambda e=entry, r=None: self.edit_entry(e, r)
+                lambda e=entry: self.edit_entry(e)
             )
-            row_callback = lambda e=entry, r=row: self.edit_entry(e, r)
-            row.layout().itemAt(2).widget().clicked.disconnect()
-            row.layout().itemAt(2).widget().clicked.connect(row_callback)
-
-            item.setSizeHint(row.sizeHint())
+            item.setSizeHint(row_widget.sizeHint())
             self.list_widget.addItem(item)
-            self.list_widget.setItemWidget(item, row)
+            self.list_widget.setItemWidget(item, row_widget)
 
     # ---------- Save / Load ----------
     def load_config(self):
@@ -252,4 +258,3 @@ if __name__ == "__main__":
     window = MacroApp()
     window.show()
     app.exec()
-
