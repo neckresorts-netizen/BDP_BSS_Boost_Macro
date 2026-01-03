@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel,
-    QComboBox, QPushButton
+    QComboBox, QPushButton, QHBoxLayout
 )
 
 
@@ -8,31 +8,67 @@ class SettingsDialog(QDialog):
     def __init__(self, start_key, stop_key):
         super().__init__()
         self.setWindowTitle("Settings")
-        self.setFixedSize(260, 160)
+        self.setFixedSize(300, 200)
+
+        # -------- Styling --------
+        self.setStyleSheet("""
+        QDialog {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        QLabel {
+            color: #bbbbbb;
+        }
+        QComboBox {
+            background-color: #2a2a2a;
+            padding: 6px;
+            border-radius: 6px;
+        }
+        QPushButton {
+            background-color: #3a3a3a;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        QPushButton:hover {
+            background-color: #505050;
+        }
+        """)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
 
-        layout.addWidget(QLabel("Start Macro Hotkey"))
+        title = QLabel("Hotkey Settings")
+        title.setStyleSheet("font-size: 16px; color: white;")
+        layout.addWidget(title)
+
+        # Start key
+        layout.addWidget(QLabel("Start Macro"))
         self.start_combo = QComboBox()
-        self.start_combo.addItems([
-            "f1","f2","f3","f4","f5","f6",
-            "f7","f8","f9","f10","f11","f12"
-        ])
+        self.start_combo.addItems(self.function_keys())
         self.start_combo.setCurrentText(start_key)
         layout.addWidget(self.start_combo)
 
-        layout.addWidget(QLabel("Stop Macro Hotkey"))
+        # Stop key
+        layout.addWidget(QLabel("Stop Macro"))
         self.stop_combo = QComboBox()
-        self.stop_combo.addItems([
-            "f1","f2","f3","f4","f5","f6",
-            "f7","f8","f9","f10","f11","f12"
-        ])
+        self.stop_combo.addItems(self.function_keys())
         self.stop_combo.setCurrentText(stop_key)
         layout.addWidget(self.stop_combo)
 
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self.accept)
-        layout.addWidget(save_btn)
+        btn_layout.addWidget(save_btn)
+
+        layout.addStretch()
+        layout.addLayout(btn_layout)
+
+    def function_keys(self):
+        return [f"f{i}" for i in range(1, 13)]
 
     def get_keys(self):
         return (
