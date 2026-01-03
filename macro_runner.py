@@ -1,62 +1,55 @@
-import time
 import threading
-from pynput.keyboard import Controller, Key
-
-keyboard = Controller()
-
-
-def normalize_key(key):
-    if len(key) == 1:
-        return key
-    try:
-        return getattr(Key, key)
-    except AttributeError:
-        return None
+import time
+from pynput.keyboard import Controller
 
 
 class MacroRunner:
     def __init__(self):
         self.running = False
         self.thread = None
+        self.keyboard = Controller()
 
-    def start(self, macro):
-        if self.running or not macro:
+    def start(self, macros):
+        if self.running or not macros:
             return
 
         self.running = True
-
-        def run():
-            while self.running:
-                for entry in macro:
-                    if not self.running:
-                        break
-
-                    key = normalize_key(entry["key"])
-                    delay = entry["delay"]
-                    repeat = entry.get("repeat", -1)
-
-                    if key is None:
-                        continue
-
-                    count = repeat if repeat > 0 else float("inf")
-
-                    for _ in range(int(count)):
-                        if not self.running:
-                            break
-
-                        try:
-                            keyboard.press(key)
-                            keyboard.release(key)
-                        except Exception:
-                            pass
-
-                        time.sleep(delay)
-
-                if not any(e.get("repeat", -1) < 0 for e in macro):
-                    break
-
-        self.thread = threading.Thread(target=run, daemon=True)
+        self.thread = threading.Thread(
+            target=self.run_macro,
+            args=(macros,),
+            daemon=True
+        )
         self.thread.start()
 
     def stop(self):
         self.running = False
+
+    def run_macro(self, macros):
+        while self.running:
+            for entry in macros:
+                if not self.running:
+                    return
+
+                key = entry["key"]
+                delay = entry["delay"]
+                repeat = entry.get("repeat", -1)
+
+                if repeat < 0:
+                    # Loop forever until stopped
+                    while self.running:
+                        self.press_key(key)
+                        time.sleep(delay)
+                else:
+                    # Finite repeat
+                    for _ in range(repeat):
+                        if not self.running:
+                            return
+                        self.press_key(key)
+                        time.sleep(delay)
+
+    def press_key(self, key):
+        try:
+            self.keyboard.press(key)
+            self.keyboard.release(key)
+        except Exception:
+            pass
