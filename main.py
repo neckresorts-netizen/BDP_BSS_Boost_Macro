@@ -163,27 +163,29 @@ class MacroApp(QWidget):
             2000
         )
 
-def add_key(self):
-    name, ok = QInputDialog.getText(self, "Macro Name", "Name:")
-    if not ok or not name:
-        return
+    # ---------- Add ----------
+    def add_key(self):
+        name, ok = QInputDialog.getText(self, "Macro Name", "Name:")
+        if not ok or not name:
+            return
 
-    QMessageBox.information(self, "Add Key", "Press a key")
+        QMessageBox.information(self, "Add Key", "Press a key")
 
-    def listen():
-        def on_press(k):
-            try:
-                key = k.char
-            except AttributeError:
-                key = str(k).replace("Key.", "")
-            self.key_signal.captured.emit((name, key))
-            return False  # Stop listener after first key
+        def listen():
+            def on_press(k):
+                try:
+                    key = k.char
+                except AttributeError:
+                    key = str(k).replace("Key.", "")
+                self.key_signal.captured.emit((name, key))
+                return False
 
-        # Fix: Actually wait for the listener
-        with keyboard.Listener(on_press=on_press) as listener:
-            listener.join()
+            # FIX: Actually wait for the listener
+            with keyboard.Listener(on_press=on_press) as listener:
+                listener.join()
 
-    threading.Thread(target=listen, daemon=True).start()
+        threading.Thread(target=listen, daemon=True).start()
+
     def on_key_captured(self, data):
         if not isinstance(data, tuple) or len(data) != 2:
             return
