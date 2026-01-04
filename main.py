@@ -125,23 +125,23 @@ class MacroApp(QWidget):
 
         threading.Thread(target=listen, daemon=True).start()
 
-  def on_key_captured(self, data):
-    if not isinstance(data, tuple) or len(data) != 2:
-        return  # ignore invalid signal
+      def on_key_captured(self, data):
+        if not isinstance(data, tuple) or len(data) != 2:
+            return  # ignore invalid signal
+    
+        name, key = data
+    
+        delay, ok = QInputDialog.getDouble(
+            self, "Delay", "Seconds:", 0.5, 0, 60, 2
+        )
+        if not ok:
+            return
 
-    name, key = data
-
-    delay, ok = QInputDialog.getDouble(
-        self, "Delay", "Seconds:", 0.5, 0, 60, 2
-    )
-    if not ok:
-        return
-
-    repeat, ok = QInputDialog.getInt(
-        self, "Repeat (-1 = loop forever)", "", -1, -1, 9999
-    )
-    if not ok:
-        return
+        repeat, ok = QInputDialog.getInt(
+            self, "Repeat (-1 = loop forever)", "", -1, -1, 9999
+        )
+        if not ok:
+            return
 
     self.macros.append({
         "name": name,
