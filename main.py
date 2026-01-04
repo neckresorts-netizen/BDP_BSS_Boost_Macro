@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QLabel, QInputDialog, QMessageBox, QCheckBox
 )
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QIcon
 from pynput import keyboard
 from pynput.keyboard import GlobalHotKeys
 
@@ -54,8 +55,6 @@ class MacroRow(QWidget):
     def refresh(self):
         repeat = self.entry.get("repeat", -1)
         rep = "Loop" if repeat < 0 else f"x{repeat}"
-        self.key_label.setText(self.entry["key"])
-        self.name_label.setText(self.entry["name"])
         self.info_label.setText(f'{self.entry["delay"]}s | {rep}')
 
 
@@ -63,7 +62,8 @@ class MacroApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Macro Editor")
-        self.resize(640, 440)
+        self.setWindowIcon(QIcon("icon.ico"))
+        self.resize(650, 450)
 
         self.setStyleSheet("""
         QWidget { background:#1e1e1e; color:white; font-size:14px; }
@@ -113,7 +113,6 @@ class MacroApp(QWidget):
         self.update_buttons()
         self.setup_hotkeys()
 
-    # ---------- Add ----------
     def add_key(self):
         name, ok = QInputDialog.getText(self, "Macro Name", "Name:")
         if not ok or not name:
@@ -169,7 +168,6 @@ class MacroApp(QWidget):
         self.refresh_list()
         self.save_config()
 
-    # ---------- Edit ----------
     def edit_entry(self, entry):
         name, ok = QInputDialog.getText(
             self, "Edit Name", "Name:", text=entry["name"]
@@ -202,7 +200,6 @@ class MacroApp(QWidget):
         self.refresh_list()
         self.save_config()
 
-    # ---------- Remove ----------
     def remove_selected(self):
         row = self.list_widget.currentRow()
         if row >= 0:
@@ -210,14 +207,12 @@ class MacroApp(QWidget):
             self.refresh_list()
             self.save_config()
 
-    # ---------- Macro ----------
     def start_macro(self):
         self.runner.start(self.macros)
 
     def stop_macro(self):
         self.runner.stop()
 
-    # ---------- UI ----------
     def refresh_list(self):
         self.list_widget.clear()
         for entry in self.macros:
@@ -228,7 +223,6 @@ class MacroApp(QWidget):
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, row)
 
-    # ---------- Settings ----------
     def open_settings(self):
         dlg = SettingsDialog(self.start_key, self.stop_key)
         if dlg.exec():
@@ -253,7 +247,6 @@ class MacroApp(QWidget):
         })
         self.hotkeys.start()
 
-    # ---------- Save / Load ----------
     def load_config(self):
         try:
             with open(CONFIG_FILE) as f:
