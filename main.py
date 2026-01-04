@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QListWidget, QListWidgetItem,
     QLabel, QInputDialog, QMessageBox, QCheckBox, QLineEdit
 )
-from PySide6.QtCore import QObject, Signal, Qt
+from PySide6.QtCore import QObject, Signal, Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap
 
 from pynput import keyboard
@@ -113,13 +113,14 @@ class MacroRow(QWidget):
         self.timer_lbl.setAlignment(Qt.AlignCenter)
 
         self.edit_btn = QPushButton("✏️")
-        self.edit_btn.setFixedSize(36, 36)
+        self.edit_btn.setFixedSize(42, 38)
         self.edit_btn.setStyleSheet("""
             QPushButton {
                 background-color: #3a3a3a;
                 border-radius: 8px;
                 border: none;
-                font-size: 16px;
+                font-size: 18px;
+                padding: 2px;
             }
             QPushButton:hover {
                 background-color: #4a9eff;
@@ -178,7 +179,21 @@ class MacroApp(QWidget):
         QWidget { background:#1e1e1e; color:white; font-size:14px; }
         QPushButton { background:#3a3a3a; border-radius:6px; padding:8px 14px; }
         QPushButton:hover { background:#505050; }
-        QListWidget { background:#2a2a2a; border-radius:8px; padding:4px; }
+        QListWidget { 
+            background:#1e1e1e; 
+            border-radius:8px; 
+            padding:6px;
+            border: none;
+        }
+        QListWidget::item {
+            background: transparent;
+            border: none;
+            padding: 3px;
+        }
+        QListWidget::item:selected {
+            background: transparent;
+            border: none;
+        }
         """)
 
         self.macros = []
@@ -275,7 +290,11 @@ class MacroApp(QWidget):
             item = QListWidgetItem()
             row = MacroRow(m, self.edit_entry)
             self.rows[m["key"]] = row
-            item.setSizeHint(row.sizeHint())
+            
+            # Add some height for better spacing
+            size_hint = row.sizeHint()
+            item.setSizeHint(size_hint + QSize(0, 8))
+            
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, row)
 
