@@ -27,62 +27,49 @@ class MacroRow(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 6, 2)
 
-        self.label = QLabel()
+        self.left = QLabel(entry["key"])
+        self.center = QLabel(entry["name"])
+        self.right = QLabel()
+
         self.edit_btn = QPushButton("✏️")
         self.edit_btn.setFixedWidth(34)
 
-        layout.addWidget(self.label)
-        layout.addStretch()
+        layout.addWidget(self.left)
+        layout.addWidget(self.center, 1)
+        layout.addWidget(self.right)
         layout.addWidget(self.edit_btn)
 
         self.refresh()
 
     def refresh(self):
         repeat = self.entry.get("repeat", -1)
-        rep_text = "Loop" if repeat < 0 else f"x{repeat}"
-        self.label.setText(
-            f'{self.entry["key"]} | {self.entry["delay"]} s | {rep_text}'
-        )
+        rep = "Loop" if repeat < 0 else f"x{repeat}"
+        self.left.setText(self.entry["key"])
+        self.center.setText(self.entry["name"])
+        self.right.setText(f'{self.entry["delay"]}s | {rep}')
 
 
 class MacroApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Macro Editor")
-        self.resize(560, 420)
+        self.resize(620, 420)
 
-        # ---------- Style ----------
         self.setStyleSheet("""
-        QWidget {
-            background-color: #1e1e1e;
-            color: #ffffff;
-            font-size: 14px;
-        }
-        QPushButton {
-            background-color: #3a3a3a;
-            border-radius: 6px;
-            padding: 8px;
-        }
-        QPushButton:hover {
-            background-color: #505050;
-        }
-        QListWidget {
-            background-color: #2a2a2a;
-            border-radius: 6px;
-        }
+        QWidget { background:#1e1e1e; color:white; font-size:14px; }
+        QPushButton { background:#3a3a3a; border-radius:6px; padding:8px; }
+        QPushButton:hover { background:#505050; }
+        QListWidget { background:#2a2a2a; border-radius:6px; }
         """)
 
-        # ---------- Data ----------
         self.macros = []
         self.start_key = "f5"
         self.stop_key = "f6"
         self.runner = MacroRunner()
 
-        # ---------- Signals ----------
         self.key_signal = KeySignal()
         self.key_signal.captured.connect(self.on_key_captured)
 
-        # ---------- UI ----------
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
@@ -90,7 +77,7 @@ class MacroApp(QWidget):
 
         btns = QHBoxLayout()
         self.add_btn = QPushButton("Add")
-        self.remove_btn = QPushButton("Remove Selected")
+        self.remove_btn = QPushButton("Remove")
         self.settings_btn = QPushButton("Settings")
         self.start_btn = QPushButton()
         self.stop_btn = QPushButton()
@@ -105,7 +92,6 @@ class MacroApp(QWidget):
         layout.addWidget(self.list_widget)
         layout.addLayout(btns)
 
-        # ---------- Connections ----------
         self.add_btn.clicked.connect(self.add_key)
         self.remove_btn.clicked.connect(self.remove_selected)
         self.settings_btn.clicked.connect(self.open_settings)
@@ -113,19 +99,118 @@ class MacroApp(QWidget):
         self.stop_btn.clicked.connect(self.stop_macro)
 
         self.load_config()
-        self.update_button_labels()
+        self.update_buttons()
         self.setup_hotkeys()
+
+    # ---------- Add ----------
+    def add_key(self):
+        name, ok = QInputDialog.getText(self, "Macro Name", "Name:")
+        if not ok or not name:
+            return
+
+        QMessageBox.information(self, "Add Key", "Press a key")
+
+        def listen():
+            def on_press(k):
+                try:
+                    key = k.char
+                except AttributeError:
+                    key = str(k).replace("Key.", "")
+                self.key_signal.captured.emit((name, key))
+                return False
+
+            with keyboard.Listener(on_press=on_press) as l:
+                l.join()
+
+        threading.Thread(target=listen, daemon=True).start()
+
+    def on_key_captured(self, data):
+        name, key = data
+
+        delay, ok = QInputDialog.getDouble(
+            self, "Delay", "Seconds:", 0.5, 0, 60, 2
+        )
+        if not ok:
+            return
+
+        repeat, ok = QInputDialog.getInt(
+            self, "Repeat (-1 = loop forever)", "", -1, -1, 9999
+        )
+        if not ok:
+            return
+
+        self.macros.append({
+            "name": name,
+            "key": key,
+            "delay": delay,
+            "repeat": repeat
+        })
+        self.refresh_list()
+        self.save_config()
+
+    # ---------- Edit ----------
+    def edit_entry(self, entry):
+        name, ok = QInputDialog.getText(
+            self, "Edit Name", "Name:", text=entry["name"]
+        )
+        if not ok:
+            return
+
+        delay, ok = QInputDialog.getDouble(
+            self, "Edit Delay", "Seconds:", entry["delay"], 0, 60, 2
+        )
+        if not ok:
+            return
+
+        repeat, ok = QInputDialog.getInt(
+            self, "Edit Repeat", "", entry["repeat"], -1, 9999
+        )
+        if not ok:
+            return
+
+        entry["name"] = name
+        entry["delay"] = delay
+        entry["repeat"] = repeat
+
+        self.refresh_list()
+        self.save_config()
+
+    # ---------- Remove ----------
+    def remove_selected(self):
+        row = self.list_widget.currentRow()
+        if row >= 0:
+            self.macros.pop(row)
+            self.refresh_list()
+            self.save_config()
+
+    # ---------- Macro ----------
+    def start_macro(self):
+        self.runner.start(self.macros)
+
+    def stop_macro(self):
+        self.runner.stop()
+
+    # ---------- UI ----------
+    def refresh_list(self):
+        self.list_widget.clear()
+        for entry in self.macros:
+            item = QListWidgetItem()
+            row = MacroRow(entry)
+            row.edit_btn.clicked.connect(lambda _, e=entry: self.edit_entry(e))
+            item.setSizeHint(row.sizeHint())
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, row)
 
     # ---------- Settings ----------
     def open_settings(self):
-        dialog = SettingsDialog(self.start_key, self.stop_key)
-        if dialog.exec():
-            self.start_key, self.stop_key = dialog.get_keys()
-            self.update_button_labels()
+        dlg = SettingsDialog(self.start_key, self.stop_key)
+        if dlg.exec():
+            self.start_key, self.stop_key = dlg.get_keys()
+            self.update_buttons()
             self.setup_hotkeys()
             self.save_config()
 
-    def update_button_labels(self):
+    def update_buttons(self):
         self.start_btn.setText(f"Start ({self.start_key.upper()})")
         self.stop_btn.setText(f"Stop ({self.stop_key.upper()})")
 
@@ -141,103 +226,10 @@ class MacroApp(QWidget):
         })
         self.hotkeys.start()
 
-    # ---------- Add ----------
-    def add_key(self):
-        QMessageBox.information(self, "Add Key", "Press a key")
-
-        def listen():
-            def on_press(k):
-                try:
-                    key = k.char
-                except AttributeError:
-                    key = str(k).replace("Key.", "")
-                self.key_signal.captured.emit(key)
-                return False
-
-            with keyboard.Listener(on_press=on_press) as l:
-                l.join()
-
-        threading.Thread(target=listen, daemon=True).start()
-
-    def on_key_captured(self, key):
-        delay, ok = QInputDialog.getDouble(
-            self, "Delay", "Delay (seconds):", 0.5, 0.0, 60.0, 2
-        )
-        if not ok:
-            return
-
-        repeat, ok = QInputDialog.getInt(
-            self, "Repeat (-1 = Loop until stopped)",
-            "-1 = Loop until stopped",
-            -1, -1, 9999
-        )
-        if not ok:
-            return
-
-        self.macros.append({
-            "key": key,
-            "delay": delay,
-            "repeat": repeat
-        })
-        self.refresh_list()
-        self.save_config()
-
-    # ---------- Edit ----------
-    def edit_entry(self, entry):
-        delay, ok = QInputDialog.getDouble(
-            self, "Edit Delay", "Seconds:", entry["delay"], 0.0, 60.0, 2
-        )
-        if not ok:
-            return
-
-        repeat, ok = QInputDialog.getInt(
-            self, "Edit Repeat", "-1 = loop forever",
-            entry.get("repeat", -1), -1, 9999
-        )
-        if not ok:
-            return
-
-        entry["delay"] = delay
-        entry["repeat"] = repeat
-        self.refresh_list()
-        self.save_config()
-
-    # ---------- Remove ----------
-    def remove_selected(self):
-        row = self.list_widget.currentRow()
-        if row < 0:
-            return
-        self.macros.pop(row)
-        self.refresh_list()
-        self.save_config()
-
-    # ---------- Macro ----------
-    def start_macro(self):
-        self.runner.start(self.macros)
-
-    def stop_macro(self):
-        self.runner.stop()
-
-    # ---------- UI ----------
-    def refresh_list(self):
-        self.list_widget.clear()
-        for entry in self.macros:
-            item = QListWidgetItem()
-            row_widget = MacroRow(entry)
-
-            # SAFE binding
-            row_widget.edit_btn.clicked.connect(
-                lambda _, e=entry: self.edit_entry(e)
-            )
-
-            item.setSizeHint(row_widget.sizeHint())
-            self.list_widget.addItem(item)
-            self.list_widget.setItemWidget(item, row_widget)
-
     # ---------- Save / Load ----------
     def load_config(self):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE) as f:
                 data = json.load(f)
                 self.macros = data.get("macros", [])
                 self.start_key = data.get("start_key", "f5")
@@ -257,6 +249,6 @@ class MacroApp(QWidget):
 
 if __name__ == "__main__":
     app = QApplication([])
-    window = MacroApp()
-    window.show()
+    w = MacroApp()
+    w.show()
     app.exec()
