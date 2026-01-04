@@ -1,6 +1,7 @@
 import json
 import threading
 import ctypes
+import sys
 
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
@@ -24,13 +25,9 @@ ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
 CONFIG_FILE = "config.json"
 
 
-# ---------- Thread-safe signals ----------
+# ---------- Thread-safe key capture ----------
 class KeySignal(QObject):
     captured = Signal(object)
-
-
-class CountdownSignal(QObject):
-    update = Signal(object, object)  # entry, remaining
 
 
 # ---------- Row Widget ----------
@@ -49,7 +46,6 @@ class MacroRow(QWidget):
         self.key_lbl = QLabel(entry["key"])
         self.name_lbl = QLabel(entry["name"])
         self.info_lbl = QLabel()
-        self.timer_lbl = QLabel("--")
 
         self.edit_btn = QPushButton("✏️")
         self.edit_btn.setFixedWidth(34)
@@ -59,7 +55,6 @@ class MacroRow(QWidget):
         layout.addWidget(self.key_lbl)
         layout.addWidget(self.name_lbl, 1)
         layout.addWidget(self.info_lbl)
-        layout.addWidget(self.timer_lbl)
         layout.addWidget(self.edit_btn)
 
         self.refresh()
@@ -72,12 +67,6 @@ class MacroRow(QWidget):
         rep = "Loop" if repeat < 0 else f"x{repeat}"
         self.info_lbl.setText(f'{self.entry["delay"]:.2f}s | {rep}')
 
-    def update_timer(self, remaining):
-        if remaining is None:
-            self.timer_lbl.setText("--")
-        else:
-            self.timer_lbl.setText(f"{remaining:0.2f}s")
-
 
 # ---------- Main App ----------
 class MacroApp(QWidget):
@@ -87,73 +76,48 @@ class MacroApp(QWidget):
         self.setWindowIcon(QIcon("icon.ico"))
         self.resize(640, 450)
 
-        self.setStyleSheet("""
-        QWidget { background:#1e1e1e; color:white; font-size:14px; }
-        QPushButton { background:#3a3a3a; border-radius:6px; padding:8px; }
-        QPushButton:hover { background:#505050; }
-        QListWidget { background:#2a2a2a; border-radius:6px; }
-        QCheckBox { padding-right: 6px; }
-        """)
-
         self.macros = []
         self.start_key = "f5"
         self.stop_key = "f6"
         self.pause_key = "f7"
 
         self.runner = MacroRunner()
-        self.runner.set_update_callback(self.on_countdown_update)
-
         self.key_signal = KeySignal()
         self.key_signal.captured.connect(self.on_key_captured)
-
-        self.countdown_signal = CountdownSignal()
-        self.countdown_signal.update.connect(self.update_row_timer)
 
         # ---------- Layout ----------
         layout = QVBoxLayout(self)
 
-        # Status bar
         self.status_icon = QLabel("■")
         self.status_icon.setStyleSheet("font-size:20px; color:#ff5555;")
-
         self.status_text = QLabel("Stopped")
-        self.status_text.setStyleSheet("font-weight:bold;")
 
         status_layout = QHBoxLayout()
         status_layout.addWidget(QLabel("Status:"))
         status_layout.addWidget(self.status_icon)
         status_layout.addWidget(self.status_text)
         status_layout.addStretch()
-
         layout.addLayout(status_layout)
 
         self.list_widget = QListWidget()
-        self.list_widget.setDragDropMode(QListWidget.InternalMove)
+        layout.addWidget(self.list_widget)
 
         btns = QHBoxLayout()
         self.add_btn = QPushButton("Add")
         self.remove_btn = QPushButton("Remove")
         self.settings_btn = QPushButton("Settings")
-
-        self.credits = QLabel("Credits to @big_eyes101")
-        self.credits.setAlignment(Qt.AlignCenter)
-        self.credits.setStyleSheet("color:#888888;")
-
-        self.start_btn = QPushButton()
         self.pause_btn = QPushButton()
+        self.start_btn = QPushButton()
         self.stop_btn = QPushButton()
 
         btns.addWidget(self.add_btn)
         btns.addWidget(self.remove_btn)
         btns.addWidget(self.settings_btn)
         btns.addStretch()
-        btns.addWidget(self.credits)
-        btns.addStretch()
         btns.addWidget(self.start_btn)
         btns.addWidget(self.pause_btn)
         btns.addWidget(self.stop_btn)
 
-        layout.addWidget(self.list_widget)
         layout.addLayout(btns)
 
         # ---------- Signals ----------
@@ -161,23 +125,12 @@ class MacroApp(QWidget):
         self.remove_btn.clicked.connect(self.remove_selected)
         self.settings_btn.clicked.connect(self.open_settings)
         self.start_btn.clicked.connect(self.start_macro)
-        self.stop_btn.clicked.connect(self.stop_macro)
         self.pause_btn.clicked.connect(self.pause_macro)
+        self.stop_btn.clicked.connect(self.stop_macro)
 
         self.load_config()
         self.update_buttons()
         self.setup_hotkeys()
-
-    # ---------- Countdown ----------
-    def on_countdown_update(self, entry, remaining):
-        self.countdown_signal.update.emit(entry, remaining)
-
-    def update_row_timer(self, entry, remaining):
-        for i in range(self.list_widget.count()):
-            row = self.list_widget.itemWidget(self.list_widget.item(i))
-            if row.entry is entry:
-                row.update_timer(remaining)
-                break
 
     # ---------- Status ----------
     def set_status(self, state):
@@ -247,23 +200,30 @@ class MacroApp(QWidget):
 
     # ---------- Edit ----------
     def edit_entry(self, entry):
-        name, ok = QInputDialog.getText(self, "Edit Name", "Name:", entry["name"])
+        name, ok = QInputDialog.getText(
+            self, "Edit Name", "Name:", text=entry["name"]
+        )
         if not ok:
             return
 
         delay, ok = QInputDialog.getDouble(
-            self, "Edit Delay", "Seconds:", entry["delay"], 0, 1800, 2
+            self, "Edit Delay", "Seconds:",
+            entry["delay"], 0, 1800, 2
         )
         if not ok:
             return
 
         repeat, ok = QInputDialog.getInt(
-            self, "Edit Repeat", "", entry["repeat"], -1, 9999
+            self, "Edit Repeat", "",
+            entry["repeat"], -1, 9999
         )
         if not ok:
             return
 
-        entry.update(name=name, delay=delay, repeat=repeat)
+        entry["name"] = name
+        entry["delay"] = delay
+        entry["repeat"] = repeat
+
         self.refresh_list()
         self.save_config()
 
@@ -281,11 +241,6 @@ class MacroApp(QWidget):
         self.runner.start(active)
         self.set_status("running")
 
-    def stop_macro(self):
-        self.runner.stop()
-        self.set_status("stopped")
-        self.clear_all_timers()
-
     def pause_macro(self):
         if self.runner.pause_event.is_set():
             self.runner.pause()
@@ -294,20 +249,9 @@ class MacroApp(QWidget):
             self.runner.resume()
             self.set_status("running")
 
-    def clear_all_timers(self):
-        for i in range(self.list_widget.count()):
-            row = self.list_widget.itemWidget(self.list_widget.item(i))
-            row.update_timer(None)
-
-    # ---------- UI ----------
-    def refresh_list(self):
-        self.list_widget.clear()
-        for entry in self.macros:
-            item = QListWidgetItem()
-            row = MacroRow(entry, self.edit_entry)
-            item.setSizeHint(row.sizeHint())
-            self.list_widget.addItem(item)
-            self.list_widget.setItemWidget(item, row)
+    def stop_macro(self):
+        self.runner.stop()
+        self.set_status("stopped")
 
     # ---------- Settings ----------
     def open_settings(self):
@@ -358,13 +302,27 @@ class MacroApp(QWidget):
                 "macros": self.macros
             }, f, indent=2)
 
+    # ---------- HARD EXIT FIX ----------
+    def closeEvent(self, event):
+        try:
+            self.runner.stop()
+        except Exception:
+            pass
+
+        try:
+            self.hotkeys.stop()
+        except Exception:
+            pass
+
+        event.accept()
+
 
 # ---------- Run ----------
 if __name__ == "__main__":
-    app = QApplication([])
+    app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("icon.ico"))
 
     w = MacroApp()
     w.show()
 
-    app.exec()
+    sys.exit(app.exec())
