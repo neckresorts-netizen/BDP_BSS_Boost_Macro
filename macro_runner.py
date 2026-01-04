@@ -1,10 +1,16 @@
 import threading
 import time
-from pynput.keyboard import Controller, Key
+from pynput.keyboard import Controller
+from PySide6.QtCore import QObject, Signal
 
 
-class MacroRunner:
+class MacroRunner(QObject):
+    tick = Signal(str, float)     # key, seconds_left
+    fired = Signal(str)           # key pressed
+    stopped = Signal()
+
     def __init__(self):
+        super().__init__()
         self.keyboard = Controller()
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
@@ -12,7 +18,7 @@ class MacroRunner:
         self.paused = False
 
     def start(self, macros):
-        self.stop()  # HARD STOP anything existing
+        self.stop()
 
         self.stop_event.clear()
         self.pause_event.set()
@@ -28,38 +34,36 @@ class MacroRunner:
                         if not m.get("enabled", True):
                             continue
 
-                        # PAUSE BLOCK
-                        self.pause_event.wait()
-                        if self.stop_event.is_set():
-                            return
-
                         key = m["key"]
-                        repeat = m["repeat"]
                         delay = m["delay"]
+                        repeat = m["repeat"]
 
                         count = 0
                         while repeat < 0 or count < repeat:
+                            self.pause_event.wait()
                             if self.stop_event.is_set():
                                 return
 
-                            self.pause_event.wait()
+                            # Countdown loop
+                            remaining = delay
+                            while remaining > 0:
+                                if self.stop_event.is_set():
+                                    return
+                                self.pause_event.wait(0.1)
+                                remaining -= 0.1
+                                self.tick.emit(key, max(0, remaining))
 
+                            # Fire key
                             try:
                                 self.keyboard.press(key)
                                 self.keyboard.release(key)
                             except Exception:
                                 pass
 
+                            self.fired.emit(key)
                             count += 1
-
-                            # INTERRUPTIBLE DELAY
-                            end = time.time() + delay
-                            while time.time() < end:
-                                if self.stop_event.is_set():
-                                    return
-                                self.pause_event.wait(0.05)
             finally:
-                self.stop_event.set()
+                self.stopped.emit()
 
         self.thread = threading.Thread(target=run, daemon=True)
         self.thread.start()
