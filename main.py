@@ -24,9 +24,13 @@ ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
 CONFIG_FILE = "config.json"
 
 
-# ---------- Thread-safe key capture ----------
+# ---------- Thread-safe signals ----------
 class KeySignal(QObject):
     captured = Signal(object)
+
+
+class CountdownSignal(QObject):
+    update = Signal(object, object)  # entry, remaining
 
 
 # ---------- Row Widget ----------
@@ -45,6 +49,7 @@ class MacroRow(QWidget):
         self.key_lbl = QLabel(entry["key"])
         self.name_lbl = QLabel(entry["name"])
         self.info_lbl = QLabel()
+        self.timer_lbl = QLabel("--")
 
         self.edit_btn = QPushButton("✏️")
         self.edit_btn.setFixedWidth(34)
@@ -54,6 +59,7 @@ class MacroRow(QWidget):
         layout.addWidget(self.key_lbl)
         layout.addWidget(self.name_lbl, 1)
         layout.addWidget(self.info_lbl)
+        layout.addWidget(self.timer_lbl)
         layout.addWidget(self.edit_btn)
 
         self.refresh()
@@ -65,6 +71,12 @@ class MacroRow(QWidget):
         repeat = self.entry.get("repeat", -1)
         rep = "Loop" if repeat < 0 else f"x{repeat}"
         self.info_lbl.setText(f'{self.entry["delay"]:.2f}s | {rep}')
+
+    def update_timer(self, remaining):
+        if remaining is None:
+            self.timer_lbl.setText("--")
+        else:
+            self.timer_lbl.setText(f"{remaining:0.2f}s")
 
 
 # ---------- Main App ----------
@@ -89,8 +101,13 @@ class MacroApp(QWidget):
         self.pause_key = "f7"
 
         self.runner = MacroRunner()
+        self.runner.set_update_callback(self.on_countdown_update)
+
         self.key_signal = KeySignal()
         self.key_signal.captured.connect(self.on_key_captured)
+
+        self.countdown_signal = CountdownSignal()
+        self.countdown_signal.update.connect(self.update_row_timer)
 
         # ---------- Layout ----------
         layout = QVBoxLayout(self)
@@ -123,8 +140,8 @@ class MacroApp(QWidget):
         self.credits.setStyleSheet("color:#888888;")
 
         self.start_btn = QPushButton()
-        self.stop_btn = QPushButton()
         self.pause_btn = QPushButton()
+        self.stop_btn = QPushButton()
 
         btns.addWidget(self.add_btn)
         btns.addWidget(self.remove_btn)
@@ -150,6 +167,17 @@ class MacroApp(QWidget):
         self.load_config()
         self.update_buttons()
         self.setup_hotkeys()
+
+    # ---------- Countdown ----------
+    def on_countdown_update(self, entry, remaining):
+        self.countdown_signal.update.emit(entry, remaining)
+
+    def update_row_timer(self, entry, remaining):
+        for i in range(self.list_widget.count()):
+            row = self.list_widget.itemWidget(self.list_widget.item(i))
+            if row.entry is entry:
+                row.update_timer(remaining)
+                break
 
     # ---------- Status ----------
     def set_status(self, state):
@@ -256,6 +284,7 @@ class MacroApp(QWidget):
     def stop_macro(self):
         self.runner.stop()
         self.set_status("stopped")
+        self.clear_all_timers()
 
     def pause_macro(self):
         if self.runner.pause_event.is_set():
@@ -264,6 +293,11 @@ class MacroApp(QWidget):
         else:
             self.runner.resume()
             self.set_status("running")
+
+    def clear_all_timers(self):
+        for i in range(self.list_widget.count()):
+            row = self.list_widget.itemWidget(self.list_widget.item(i))
+            row.update_timer(None)
 
     # ---------- UI ----------
     def refresh_list(self):
