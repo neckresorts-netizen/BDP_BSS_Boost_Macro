@@ -35,34 +35,99 @@ class MacroRow(QWidget):
     def __init__(self, entry, edit_callback):
         super().__init__()
         self.entry = entry
+        
+        # Rounded background styling
+        self.setStyleSheet("""
+            MacroRow {
+                background-color: #2d2d2d;
+                border-radius: 10px;
+                margin: 2px;
+            }
+            MacroRow:hover {
+                background-color: #353535;
+            }
+        """)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(12)
 
         self.enabled = QCheckBox()
         self.enabled.setChecked(entry.get("enabled", True))
         self.enabled.stateChanged.connect(self.toggle)
+        self.enabled.setStyleSheet("""
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+                border-radius: 4px;
+                border: 2px solid #555;
+                background-color: #2a2a2a;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #4a9eff;
+                border-color: #4a9eff;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #4a9eff;
+            }
+        """)
 
-        self.key_lbl = QLabel(entry["key"])
-        self.key_lbl.setMinimumWidth(40)
-        self.key_lbl.setStyleSheet("font-weight:bold;")
+        self.key_lbl = QLabel(entry["key"].upper())
+        self.key_lbl.setMinimumWidth(45)
+        self.key_lbl.setAlignment(Qt.AlignCenter)
+        self.key_lbl.setStyleSheet("""
+            background-color: #4a9eff;
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+        """)
         
         self.name_lbl = QLabel(entry["name"])
+        self.name_lbl.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: 500;")
 
         # Info label showing delay and repeat
         repeat = entry.get("repeat", -1)
         rep = "Loop" if repeat < 0 else f"x{repeat}"
         self.info_lbl = QLabel(f'{entry["delay"]:.2f}s | {rep}')
-        self.info_lbl.setStyleSheet("color:#888;")
-        self.info_lbl.setMinimumWidth(80)
+        self.info_lbl.setStyleSheet("""
+            color: #999;
+            background-color: #252525;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+        """)
+        self.info_lbl.setMinimumWidth(90)
 
-        self.timer_lbl = QLabel("—")
-        self.timer_lbl.setStyleSheet("color:#9adfff; min-width:70px;")
-        self.timer_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.timer_lbl = QLabel("Ready")
+        self.timer_lbl.setStyleSheet("""
+            color: #9adfff;
+            background-color: #1a3a4a;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-weight: bold;
+            min-width: 70px;
+            font-size: 12px;
+        """)
+        self.timer_lbl.setAlignment(Qt.AlignCenter)
 
         self.edit_btn = QPushButton("✏️")
-        self.edit_btn.setFixedSize(40, 32)
+        self.edit_btn.setFixedSize(36, 36)
+        self.edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                border-radius: 8px;
+                border: none;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #4a9eff;
+            }
+            QPushButton:pressed {
+                background-color: #3a7fd5;
+            }
+        """)
         self.edit_btn.clicked.connect(lambda: edit_callback(entry))
 
         layout.addWidget(self.enabled)
@@ -77,9 +142,28 @@ class MacroRow(QWidget):
 
     def update_timer(self, seconds):
         self.timer_lbl.setText(f"{seconds:0.1f}s")
+        self.timer_lbl.setStyleSheet("""
+            color: #ffaa00;
+            background-color: #3a2a1a;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-weight: bold;
+            min-width: 70px;
+            font-size: 12px;
+        """)
 
     def reset_timer(self):
-        self.timer_lbl.setText("—")
+        self.timer_lbl.setText("Ready")
+        self.timer_lbl.setStyleSheet("""
+            color: #9adfff;
+            background-color: #1a3a4a;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-weight: bold;
+            min-width: 70px;
+            font-size: 12px;
+        """)
+
 
 
 # ---------- Main App ----------
