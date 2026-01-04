@@ -1,14 +1,21 @@
-import json
-import threading
+# ---------------- Windows App ID (MUST be first) ----------------
 import sys
 import ctypes
 
+if sys.platform == "win32":
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+        "BigEyes101.MacroEditor"
+    )
+
+# ---------------- Imports ----------------
+import json
+import threading
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QListWidgetItem,
     QLabel, QInputDialog, QMessageBox, QCheckBox
 )
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtGui import QIcon
 from pynput import keyboard
 from pynput.keyboard import GlobalHotKeys
@@ -17,77 +24,80 @@ from macro_runner import MacroRunner
 from settings_dialog import SettingsDialog
 
 CONFIG_FILE = "config.json"
-if sys.platform == "win32":
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-        "macro.editor.app"
-    )
 
 
+# ---------------- Key Capture Signal ----------------
 class KeySignal(QObject):
-    captured = Signal(object)
+    captured = Signal(tuple)
 
 
+# ---------------- Macro Row Widget ----------------
 class MacroRow(QWidget):
-    def __init__(self, entry, on_toggle):
+    def __init__(self, entry, toggle_cb, edit_cb):
         super().__init__()
         self.entry = entry
-        self.on_toggle = on_toggle
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 6, 2)
 
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(entry.get("enabled", True))
-        self.checkbox.stateChanged.connect(self.toggle_enabled)
+        self.enabled = QCheckBox()
+        self.enabled.setChecked(entry.get("enabled", True))
+        self.enabled.stateChanged.connect(toggle_cb)
 
-        self.key_label = QLabel(entry["key"])
-        self.name_label = QLabel(entry["name"])
-        self.info_label = QLabel()
+        self.key_lbl = QLabel(entry["key"])
+        self.name_lbl = QLabel(entry["name"])
+        self.info_lbl = QLabel()
 
         self.edit_btn = QPushButton("✏️")
         self.edit_btn.setFixedWidth(34)
+        self.edit_btn.clicked.connect(edit_cb)
 
-        layout.addWidget(self.checkbox)
-        layout.addWidget(self.key_label)
-        layout.addWidget(self.name_label, 1)
-        layout.addWidget(self.info_label)
+        layout.addWidget(self.enabled)
+        layout.addWidget(self.key_lbl)
+        layout.addWidget(self.name_lbl, 1)
+        layout.addWidget(self.info_lbl)
         layout.addWidget(self.edit_btn)
 
         self.refresh()
 
-    def toggle_enabled(self):
-        self.entry["enabled"] = self.checkbox.isChecked()
-        self.on_toggle()
-
     def refresh(self):
         repeat = self.entry.get("repeat", -1)
         rep = "Loop" if repeat < 0 else f"x{repeat}"
-        self.info_label.setText(f'{self.entry["delay"]}s | {rep}')
+        delay = self.entry["delay"]
+        mins = int(delay // 60)
+        secs = int(delay % 60)
+        delay_txt = f"{mins}m {secs}s" if mins else f"{secs}s"
+
+        self.key_lbl.setText(self.entry["key"])
+        self.name_lbl.setText(self.entry["name"])
+        self.info_lbl.setText(f"{delay_txt} | {rep}")
 
 
+# ---------------- Main App ----------------
 class MacroApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Macro Editor")
         self.setWindowIcon(QIcon("icon.ico"))
-        self.resize(650, 450)
+        self.resize(640, 420)
 
         self.setStyleSheet("""
         QWidget { background:#1e1e1e; color:white; font-size:14px; }
         QPushButton { background:#3a3a3a; border-radius:6px; padding:8px; }
         QPushButton:hover { background:#505050; }
         QListWidget { background:#2a2a2a; border-radius:6px; }
-        QCheckBox { padding-right:6px; }
+        QCheckBox { padding-right: 6px; }
         """)
 
         self.macros = []
         self.start_key = "f5"
         self.stop_key = "f6"
-        self.runner = MacroRunner()
 
+        self.runner = MacroRunner()
         self.key_signal = KeySignal()
         self.key_signal.captured.connect(self.on_key_captured)
 
+        # -------- Layout --------
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
@@ -103,6 +113,12 @@ class MacroApp(QWidget):
         btns.addWidget(self.add_btn)
         btns.addWidget(self.remove_btn)
         btns.addWidget(self.settings_btn)
+
+        credits = QLabel("Credits to @big_eyes101")
+        credits.setStyleSheet("color:#888888; font-size:12px;")
+        credits.setAlignment(Qt.AlignCenter)
+        btns.addWidget(credits)
+
         btns.addStretch()
         btns.addWidget(self.start_btn)
         btns.addWidget(self.stop_btn)
@@ -110,6 +126,7 @@ class MacroApp(QWidget):
         layout.addWidget(self.list_widget)
         layout.addLayout(btns)
 
+        # -------- Signals --------
         self.add_btn.clicked.connect(self.add_key)
         self.remove_btn.clicked.connect(self.remove_selected)
         self.settings_btn.clicked.connect(self.open_settings)
@@ -120,6 +137,7 @@ class MacroApp(QWidget):
         self.update_buttons()
         self.setup_hotkeys()
 
+    # ---------------- Add Macro ----------------
     def add_key(self):
         name, ok = QInputDialog.getText(self, "Macro Name", "Name:")
         if not ok or not name:
@@ -142,19 +160,11 @@ class MacroApp(QWidget):
         threading.Thread(target=listen, daemon=True).start()
 
     def on_key_captured(self, data):
-        if not isinstance(data, tuple) or len(data) != 2:
-            return
-
         name, key = data
 
         delay, ok = QInputDialog.getDouble(
-            self,
-            "Delay",
-            "Seconds (max 1800 = 30 minutes):",
-            1.0,
-            0,
-            1800,
-            2
+            self, "Delay", "Seconds (up to 30 minutes):",
+            1.0, 0, 1800, 2
         )
         if not ok:
             return
@@ -175,6 +185,7 @@ class MacroApp(QWidget):
         self.refresh_list()
         self.save_config()
 
+    # ---------------- Edit ----------------
     def edit_entry(self, entry):
         name, ok = QInputDialog.getText(
             self, "Edit Name", "Name:", text=entry["name"]
@@ -183,13 +194,8 @@ class MacroApp(QWidget):
             return
 
         delay, ok = QInputDialog.getDouble(
-            self,
-            "Edit Delay",
-            "Seconds (max 1800):",
-            entry["delay"],
-            0,
-            1800,
-            2
+            self, "Edit Delay", "Seconds:",
+            entry["delay"], 0, 1800, 2
         )
         if not ok:
             return
@@ -200,13 +206,11 @@ class MacroApp(QWidget):
         if not ok:
             return
 
-        entry["name"] = name
-        entry["delay"] = delay
-        entry["repeat"] = repeat
-
+        entry.update(name=name, delay=delay, repeat=repeat)
         self.refresh_list()
         self.save_config()
 
+    # ---------------- Remove ----------------
     def remove_selected(self):
         row = self.list_widget.currentRow()
         if row >= 0:
@@ -214,22 +218,35 @@ class MacroApp(QWidget):
             self.refresh_list()
             self.save_config()
 
+    # ---------------- Macro Control ----------------
     def start_macro(self):
-        self.runner.start(self.macros)
+        enabled = [m for m in self.macros if m.get("enabled", True)]
+        self.runner.start(enabled)
 
     def stop_macro(self):
         self.runner.stop()
 
+    # ---------------- UI ----------------
     def refresh_list(self):
         self.list_widget.clear()
         for entry in self.macros:
             item = QListWidgetItem()
-            row = MacroRow(entry, self.save_config)
-            row.edit_btn.clicked.connect(lambda _, e=entry: self.edit_entry(e))
+
+            def toggle(state, e=entry):
+                e["enabled"] = bool(state)
+                self.save_config()
+
+            row = MacroRow(
+                entry,
+                toggle_cb=toggle,
+                edit_cb=lambda _, e=entry: self.edit_entry(e)
+            )
+
             item.setSizeHint(row.sizeHint())
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, row)
 
+    # ---------------- Settings ----------------
     def open_settings(self):
         dlg = SettingsDialog(self.start_key, self.stop_key)
         if dlg.exec():
@@ -254,6 +271,7 @@ class MacroApp(QWidget):
         })
         self.hotkeys.start()
 
+    # ---------------- Save / Load ----------------
     def load_config(self):
         try:
             with open(CONFIG_FILE) as f:
@@ -274,8 +292,11 @@ class MacroApp(QWidget):
             }, f, indent=2)
 
 
+# ---------------- Entry ----------------
 if __name__ == "__main__":
     app = QApplication([])
+    app.setApplicationName("Macro Editor")
+    app.setOrganizationName("BigEyes101")
     app.setWindowIcon(QIcon("icon.ico"))
 
     w = MacroApp()
