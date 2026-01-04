@@ -1,85 +1,82 @@
 import threading
 import time
-from pynput.keyboard import Controller
+from pynput.keyboard import Controller, Key
 
 
 class MacroRunner:
     def __init__(self):
         self.keyboard = Controller()
-        self.threads = []
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
-        self.pause_event.set()  # not paused initially
-        self.lock = threading.Lock()
+        self.thread = None
+        self.paused = False
 
-    # ---------- Start ----------
     def start(self, macros):
-        """
-        macros: list of dicts
-        { key, delay, repeat, enabled }
-        """
-        self.stop()  # HARD STOP anything already running
+        self.stop()  # HARD STOP anything existing
 
         self.stop_event.clear()
         self.pause_event.set()
-        self.threads.clear()
+        self.paused = False
 
-        for macro in macros:
-            if not macro.get("enabled", True):
-                continue
+        def run():
+            try:
+                while not self.stop_event.is_set():
+                    for m in macros:
+                        if self.stop_event.is_set():
+                            return
 
-            t = threading.Thread(
-                target=self._run_macro,
-                args=(macro,),
-                daemon=True
-            )
-            self.threads.append(t)
-            t.start()
+                        if not m.get("enabled", True):
+                            continue
 
-    # ---------- Worker ----------
-    def _run_macro(self, macro):
-        key = macro["key"]
-        delay = float(macro["delay"])
-        repeat = int(macro["repeat"])
+                        # PAUSE BLOCK
+                        self.pause_event.wait()
+                        if self.stop_event.is_set():
+                            return
 
-        count = 0
+                        key = m["key"]
+                        repeat = m["repeat"]
+                        delay = m["delay"]
 
-        while not self.stop_event.is_set():
-            self.pause_event.wait()  # pause support
+                        count = 0
+                        while repeat < 0 or count < repeat:
+                            if self.stop_event.is_set():
+                                return
 
-            if self.stop_event.is_set():
-                break
+                            self.pause_event.wait()
 
-            # ---------- Press ----------
-            with self.lock:
-                self.keyboard.press(key)
-                self.keyboard.release(key)
+                            try:
+                                self.keyboard.press(key)
+                                self.keyboard.release(key)
+                            except Exception:
+                                pass
 
-            count += 1
+                            count += 1
 
-            if repeat >= 0 and count >= repeat:
-                break
+                            # INTERRUPTIBLE DELAY
+                            end = time.time() + delay
+                            while time.time() < end:
+                                if self.stop_event.is_set():
+                                    return
+                                self.pause_event.wait(0.05)
+            finally:
+                self.stop_event.set()
 
-            # ---------- Delay ----------
-            end_time = time.time() + delay
-            while time.time() < end_time:
-                if self.stop_event.is_set():
-                    return
-                time.sleep(0.01)
+        self.thread = threading.Thread(target=run, daemon=True)
+        self.thread.start()
 
-    # ---------- Controls ----------
+    def pause(self):
+        self.paused = True
+        self.pause_event.clear()
+
+    def resume(self):
+        self.paused = False
+        self.pause_event.set()
+
     def stop(self):
         self.stop_event.set()
         self.pause_event.set()
 
-        for t in self.threads:
-            if t.is_alive():
-                t.join(timeout=0.2)
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=1)
 
-        self.threads.clear()
-
-    def pause(self):
-        self.pause_event.clear()
-
-    def resume(self):
-        self.pause_event.set()
+        self.thread = None
