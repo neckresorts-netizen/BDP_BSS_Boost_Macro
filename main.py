@@ -1,6 +1,5 @@
 import json
 import threading
-import time
 import ctypes
 
 from PySide6.QtWidgets import (
@@ -18,7 +17,7 @@ from macro_runner import MacroRunner
 from settings_dialog import SettingsDialog
 
 
-# ---------- Windows App ID (best effort) ----------
+# ---------- Windows App ID ----------
 APP_ID = "MacroEditor.App"
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
 
@@ -65,8 +64,6 @@ class MacroRow(QWidget):
     def refresh(self):
         repeat = self.entry.get("repeat", -1)
         rep = "Loop" if repeat < 0 else f"x{repeat}"
-        self.key_lbl.setText(self.entry["key"])
-        self.name_lbl.setText(self.entry["name"])
         self.info_lbl.setText(f'{self.entry["delay"]:.2f}s | {rep}')
 
 
@@ -76,7 +73,7 @@ class MacroApp(QWidget):
         super().__init__()
         self.setWindowTitle("Macro Editor")
         self.setWindowIcon(QIcon("icon.ico"))
-        self.resize(640, 420)
+        self.resize(640, 450)
 
         self.setStyleSheet("""
         QWidget { background:#1e1e1e; color:white; font-size:14px; }
@@ -89,6 +86,7 @@ class MacroApp(QWidget):
         self.macros = []
         self.start_key = "f5"
         self.stop_key = "f6"
+        self.pause_key = "f7"
 
         self.runner = MacroRunner()
         self.key_signal = KeySignal()
@@ -96,6 +94,21 @@ class MacroApp(QWidget):
 
         # ---------- Layout ----------
         layout = QVBoxLayout(self)
+
+        # Status bar
+        self.status_icon = QLabel("■")
+        self.status_icon.setStyleSheet("font-size:20px; color:#ff5555;")
+
+        self.status_text = QLabel("Stopped")
+        self.status_text.setStyleSheet("font-weight:bold;")
+
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(QLabel("Status:"))
+        status_layout.addWidget(self.status_icon)
+        status_layout.addWidget(self.status_text)
+        status_layout.addStretch()
+
+        layout.addLayout(status_layout)
 
         self.list_widget = QListWidget()
         self.list_widget.setDragDropMode(QListWidget.InternalMove)
@@ -111,6 +124,7 @@ class MacroApp(QWidget):
 
         self.start_btn = QPushButton()
         self.stop_btn = QPushButton()
+        self.pause_btn = QPushButton()
 
         btns.addWidget(self.add_btn)
         btns.addWidget(self.remove_btn)
@@ -119,6 +133,7 @@ class MacroApp(QWidget):
         btns.addWidget(self.credits)
         btns.addStretch()
         btns.addWidget(self.start_btn)
+        btns.addWidget(self.pause_btn)
         btns.addWidget(self.stop_btn)
 
         layout.addWidget(self.list_widget)
@@ -130,10 +145,26 @@ class MacroApp(QWidget):
         self.settings_btn.clicked.connect(self.open_settings)
         self.start_btn.clicked.connect(self.start_macro)
         self.stop_btn.clicked.connect(self.stop_macro)
+        self.pause_btn.clicked.connect(self.pause_macro)
 
         self.load_config()
         self.update_buttons()
         self.setup_hotkeys()
+
+    # ---------- Status ----------
+    def set_status(self, state):
+        if state == "running":
+            self.status_icon.setText("▶")
+            self.status_icon.setStyleSheet("color:#55ff55; font-size:20px;")
+            self.status_text.setText("Running")
+        elif state == "paused":
+            self.status_icon.setText("⏸")
+            self.status_icon.setStyleSheet("color:#ffaa00; font-size:20px;")
+            self.status_text.setText("Paused")
+        else:
+            self.status_icon.setText("■")
+            self.status_icon.setStyleSheet("color:#ff5555; font-size:20px;")
+            self.status_text.setText("Stopped")
 
     # ---------- Add ----------
     def add_key(self):
@@ -152,21 +183,19 @@ class MacroApp(QWidget):
                 self.key_signal.captured.emit((name, key))
                 return False
 
-            # FIX: Actually wait for the listener
             with keyboard.Listener(on_press=on_press) as listener:
                 listener.join()
 
         threading.Thread(target=listen, daemon=True).start()
 
     def on_key_captured(self, data):
-        if not isinstance(data, tuple) or len(data) != 2:
+        if not isinstance(data, tuple):
             return
 
         name, key = data
 
         delay, ok = QInputDialog.getDouble(
-            self, "Delay", "Seconds:",
-            0.5, 0, 1800, 2  # up to 30 minutes
+            self, "Delay", "Seconds:", 0.5, 0, 1800, 2
         )
         if not ok:
             return
@@ -190,15 +219,12 @@ class MacroApp(QWidget):
 
     # ---------- Edit ----------
     def edit_entry(self, entry):
-        name, ok = QInputDialog.getText(
-            self, "Edit Name", "Name:", text=entry["name"]
-        )
+        name, ok = QInputDialog.getText(self, "Edit Name", "Name:", entry["name"])
         if not ok:
             return
 
         delay, ok = QInputDialog.getDouble(
-            self, "Edit Delay", "Seconds:",
-            entry["delay"], 0, 1800, 2
+            self, "Edit Delay", "Seconds:", entry["delay"], 0, 1800, 2
         )
         if not ok:
             return
@@ -209,10 +235,7 @@ class MacroApp(QWidget):
         if not ok:
             return
 
-        entry["name"] = name
-        entry["delay"] = delay
-        entry["repeat"] = repeat
-
+        entry.update(name=name, delay=delay, repeat=repeat)
         self.refresh_list()
         self.save_config()
 
@@ -228,9 +251,19 @@ class MacroApp(QWidget):
     def start_macro(self):
         active = [m for m in self.macros if m.get("enabled", True)]
         self.runner.start(active)
+        self.set_status("running")
 
     def stop_macro(self):
         self.runner.stop()
+        self.set_status("stopped")
+
+    def pause_macro(self):
+        if self.runner.pause_event.is_set():
+            self.runner.pause()
+            self.set_status("paused")
+        else:
+            self.runner.resume()
+            self.set_status("running")
 
     # ---------- UI ----------
     def refresh_list(self):
@@ -244,15 +277,16 @@ class MacroApp(QWidget):
 
     # ---------- Settings ----------
     def open_settings(self):
-        dlg = SettingsDialog(self.start_key, self.stop_key)
+        dlg = SettingsDialog(self.start_key, self.stop_key, self.pause_key)
         if dlg.exec():
-            self.start_key, self.stop_key = dlg.get_keys()
+            self.start_key, self.stop_key, self.pause_key = dlg.get_keys()
             self.update_buttons()
             self.setup_hotkeys()
             self.save_config()
 
     def update_buttons(self):
         self.start_btn.setText(f"Start ({self.start_key.upper()})")
+        self.pause_btn.setText(f"Pause ({self.pause_key.upper()})")
         self.stop_btn.setText(f"Stop ({self.stop_key.upper()})")
 
     def setup_hotkeys(self):
@@ -263,6 +297,7 @@ class MacroApp(QWidget):
 
         self.hotkeys = GlobalHotKeys({
             f"<{self.start_key}>": self.start_macro,
+            f"<{self.pause_key}>": self.pause_macro,
             f"<{self.stop_key}>": self.stop_macro
         })
         self.hotkeys.start()
@@ -275,6 +310,7 @@ class MacroApp(QWidget):
                 self.macros = data.get("macros", [])
                 self.start_key = data.get("start_key", "f5")
                 self.stop_key = data.get("stop_key", "f6")
+                self.pause_key = data.get("pause_key", "f7")
                 self.refresh_list()
         except FileNotFoundError:
             pass
@@ -284,6 +320,7 @@ class MacroApp(QWidget):
             json.dump({
                 "start_key": self.start_key,
                 "stop_key": self.stop_key,
+                "pause_key": self.pause_key,
                 "macros": self.macros
             }, f, indent=2)
 
