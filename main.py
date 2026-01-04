@@ -1,4 +1,3 @@
-# ---------------- Windows App ID (MUST be first) ----------------
 import sys
 import ctypes
 
