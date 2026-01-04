@@ -8,9 +8,8 @@ class SettingsDialog(QDialog):
     def __init__(self, start_key, stop_key):
         super().__init__()
         self.setWindowTitle("Settings")
-        self.setFixedSize(300, 200)
+        self.setFixedSize(320, 220)
 
-        # -------- Styling --------
         self.setStyleSheet("""
         QDialog {
             background-color: #1e1e1e;
@@ -42,26 +41,26 @@ class SettingsDialog(QDialog):
         title.setStyleSheet("font-size: 16px; color: white;")
         layout.addWidget(title)
 
-        # Start key
         layout.addWidget(QLabel("Start Macro"))
         self.start_combo = QComboBox()
         self.start_combo.addItems(self.function_keys())
         self.start_combo.setCurrentText(start_key)
         layout.addWidget(self.start_combo)
 
-        # Stop key
         layout.addWidget(QLabel("Stop Macro"))
         self.stop_combo = QComboBox()
         self.stop_combo.addItems(self.function_keys())
         self.stop_combo.setCurrentText(stop_key)
         layout.addWidget(self.stop_combo)
 
-        # Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
         save_btn = QPushButton("Save")
+        save_btn.setMinimumHeight(36)
+        save_btn.setStyleSheet("padding: 6px 16px;")
         save_btn.clicked.connect(self.accept)
+
         btn_layout.addWidget(save_btn)
 
         layout.addStretch()
