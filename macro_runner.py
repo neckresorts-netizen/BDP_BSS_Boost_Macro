@@ -2,7 +2,7 @@ import threading
 import time
 from pynput.keyboard import Controller
 
-keyboard_controller = Controller()
+keyboard = Controller()
 
 
 class MacroRunner:
@@ -11,8 +11,7 @@ class MacroRunner:
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
         self.pause_event.set()
-        self.running = False
-        self.update_callback = None  # UI hook
+        self.update_callback = None
 
     def set_update_callback(self, callback):
         self.update_callback = callback
@@ -21,7 +20,7 @@ class MacroRunner:
         self.stop()
         self.stop_event.clear()
         self.pause_event.set()
-        self.running = True
+        self.threads = []
 
         for entry in macros:
             t = threading.Thread(
@@ -29,56 +28,62 @@ class MacroRunner:
                 args=(entry,),
                 daemon=True
             )
-            self.threads.append(t)
             t.start()
+            self.threads.append(t)
 
     def stop(self):
-        self.running = False
         self.stop_event.set()
         self.pause_event.set()
-        self.threads.clear()
 
     def pause(self):
-        if self.running:
-            self.pause_event.clear()
+        self.pause_event.clear()
 
     def resume(self):
-        if self.running:
-            self.pause_event.set()
+        self.pause_event.set()
 
     def run_macro(self, entry):
         delay = entry["delay"]
         repeat = entry["repeat"]
-        count = 0
 
+        count = 0
         while not self.stop_event.is_set():
             if repeat >= 0 and count >= repeat:
                 break
 
+            # ---------- PAUSE SAFE ----------
+            self.pause_event.wait()
+            if self.stop_event.is_set():
+                break
+
+            # ---------- INTERRUPTIBLE DELAY ----------
             remaining = delay
+            start = time.time()
 
             while remaining > 0:
                 if self.stop_event.is_set():
                     return
 
                 self.pause_event.wait()
-
                 step = min(0.05, remaining)
-                time.sleep(step)
-                remaining -= step
+                if self.stop_event.wait(step):
+                    return
+
+                remaining = delay - (time.time() - start)
 
                 if self.update_callback:
-                    self.update_callback(entry, remaining)
+                    self.update_callback(entry, max(0, remaining))
 
+            # ---------- PRESS KEY ----------
             if self.stop_event.is_set():
                 return
 
-            self.pause_event.wait()
-
-            keyboard_controller.press(entry["key"])
-            keyboard_controller.release(entry["key"])
+            try:
+                keyboard.press(entry["key"])
+                keyboard.release(entry["key"])
+            except Exception:
+                pass
 
             if self.update_callback:
-                self.update_callback(entry, None)  # reset display
+                self.update_callback(entry, None)
 
             count += 1
