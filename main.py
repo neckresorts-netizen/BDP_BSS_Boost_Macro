@@ -296,7 +296,9 @@ if __name__ == "__main__":
     app = QApplication([])
     app.setApplicationName("Macro Editor")
     app.setOrganizationName("BigEyes101")
+    app.setDesktopFileName("MacroEditor")
     app.setWindowIcon(QIcon("icon.ico"))
+
 
     w = MacroApp()
     w.show()
