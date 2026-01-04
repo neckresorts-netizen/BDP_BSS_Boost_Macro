@@ -2,35 +2,45 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel,
     QComboBox, QPushButton, QHBoxLayout
 )
+from PySide6.QtCore import Qt
 
 
 class SettingsDialog(QDialog):
     def __init__(self, start_key, stop_key, pause_key):
         super().__init__()
         self.setWindowTitle("Settings")
-        self.setFixedSize(300, 240)
+        self.setFixedSize(320, 260)
 
         self.setStyleSheet("""
-        QDialog { background-color:#1e1e1e; color:white; font-size:14px; }
-        QLabel { color:#bbbbbb; }
+        QDialog {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        QLabel {
+            color: #bbbbbb;
+        }
         QComboBox {
-            background-color:#2a2a2a;
-            padding:6px;
-            border-radius:6px;
+            background-color: #2a2a2a;
+            padding: 6px;
+            border-radius: 6px;
         }
         QPushButton {
-            background-color:#3a3a3a;
-            border-radius:6px;
-            padding:8px;
+            background-color: #3a3a3a;
+            border-radius: 6px;
+            padding: 8px 14px;
         }
-        QPushButton:hover { background:#505050; }
+        QPushButton:hover {
+            background-color: #505050;
+        }
         """)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(14)
+        layout.setContentsMargins(14, 14, 14, 14)
 
         title = QLabel("Hotkey Settings")
-        title.setStyleSheet("font-size:16px; color:white;")
+        title.setStyleSheet("font-size: 16px; font-weight:bold; color: white;")
         layout.addWidget(title)
 
         layout.addWidget(QLabel("Start Macro"))
@@ -39,7 +49,7 @@ class SettingsDialog(QDialog):
         self.start_combo.setCurrentText(start_key)
         layout.addWidget(self.start_combo)
 
-        layout.addWidget(QLabel("Pause / Resume Macro"))
+        layout.addWidget(QLabel("Pause Macro"))
         self.pause_combo = QComboBox()
         self.pause_combo.addItems(self.function_keys())
         self.pause_combo.setCurrentText(pause_key)
@@ -51,15 +61,17 @@ class SettingsDialog(QDialog):
         self.stop_combo.setCurrentText(stop_key)
         layout.addWidget(self.stop_combo)
 
-        btns = QHBoxLayout()
-        btns.addStretch()
+        layout.addStretch()
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
 
         save_btn = QPushButton("Save")
+        save_btn.setMinimumWidth(90)
         save_btn.clicked.connect(self.accept)
-        btns.addWidget(save_btn)
+        btn_layout.addWidget(save_btn)
 
-        layout.addStretch()
-        layout.addLayout(btns)
+        layout.addLayout(btn_layout)
 
     def function_keys(self):
         return [f"f{i}" for i in range(1, 13)]
