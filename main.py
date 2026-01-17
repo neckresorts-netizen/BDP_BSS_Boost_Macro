@@ -525,8 +525,17 @@ class MacroApp(QWidget):
         except:
             pass
         
+        # Format key properly for GlobalHotKeys
+        # Function keys need <>, regular keys don't
+        if trigger_key.startswith('f') and len(trigger_key) <= 3 and trigger_key[1:].isdigit():
+            # Function key like f1, f2, f12
+            key_format = f"<{trigger_key}>"
+        else:
+            # Regular character key
+            key_format = trigger_key
+        
         self.manual_trigger_listener = GlobalHotKeys({
-            f"<{trigger_key}>": on_trigger
+            key_format: on_trigger
         })
         self.manual_trigger_listener.start()
     
