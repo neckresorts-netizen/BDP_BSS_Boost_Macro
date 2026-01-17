@@ -388,7 +388,7 @@ class MacroApp(QWidget):
         super().__init__()
         self.setWindowTitle("Macro Editor")
         self.setWindowIcon(QIcon("icon.ico"))
-        self.resize(700, 470)
+        self.resize(750, 470)
 
         self.setStyleSheet("""
         QWidget { background:#1e1e1e; color:white; font-size:14px; }
