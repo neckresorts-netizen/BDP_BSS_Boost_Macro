@@ -36,7 +36,7 @@ class CenterAlignmentDialog(QDialog):
     def __init__(self, center_config, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Center Alignment")
-        self.setMinimumSize(350, 250)
+        self.setMinimumSize(400, 350)
         
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #ffffff; }
@@ -66,6 +66,10 @@ class CenterAlignmentDialog(QDialog):
         title.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
         layout.addWidget(title)
         
+        desc = QLabel("Presses: , → 1ms → . or . → 1ms → ,")
+        desc.setStyleSheet("font-size: 12px; color: #888;")
+        layout.addWidget(desc)
+        
         # Mode selection
         mode_label = QLabel("Mode:")
         mode_label.setStyleSheet("font-weight: bold;")
@@ -77,25 +81,59 @@ class CenterAlignmentDialog(QDialog):
         self.mode_combo.currentTextChanged.connect(self.on_mode_changed)
         layout.addWidget(self.mode_combo)
         
-        # Manual keybind
-        self.manual_label = QLabel("Trigger Key:")
+        # Manual keybinds
+        self.manual_label = QLabel("Trigger Keys:")
         self.manual_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self.manual_label)
         
-        self.key_btn = QPushButton(center_config.get("trigger_key", "f").upper())
-        self.key_btn.clicked.connect(self.capture_key)
-        layout.addWidget(self.key_btn)
+        manual_layout = QHBoxLayout()
         
-        # Auto interval
-        self.auto_label = QLabel("Interval (seconds):")
+        left_layout = QVBoxLayout()
+        left_layout.addWidget(QLabel(",."))
+        self.key1_btn = QPushButton(center_config.get("trigger_key1", "f").upper())
+        self.key1_btn.clicked.connect(lambda: self.capture_key(1))
+        left_layout.addWidget(self.key1_btn)
+        
+        right_layout = QVBoxLayout()
+        right_layout.addWidget(QLabel(".,"))
+        self.key2_btn = QPushButton(center_config.get("trigger_key2", "g").upper())
+        self.key2_btn.clicked.connect(lambda: self.capture_key(2))
+        right_layout.addWidget(self.key2_btn)
+        
+        manual_layout.addLayout(left_layout)
+        manual_layout.addLayout(right_layout)
+        
+        self.manual_widget = QWidget()
+        self.manual_widget.setLayout(manual_layout)
+        layout.addWidget(self.manual_widget)
+        
+        # Auto settings
+        self.auto_label = QLabel("Auto Settings:")
         self.auto_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self.auto_label)
+        
+        auto_layout = QVBoxLayout()
+        
+        pattern_label = QLabel("Pattern:")
+        auto_layout.addWidget(pattern_label)
+        
+        self.pattern_combo = QComboBox()
+        self.pattern_combo.addItems(["Alternate Both", "Only ,.", "Only .,"])
+        self.pattern_combo.setCurrentText(center_config.get("pattern", "Alternate Both"))
+        auto_layout.addWidget(self.pattern_combo)
+        
+        interval_label = QLabel("Interval (seconds):")
+        auto_layout.addWidget(interval_label)
         
         self.interval_spin = QDoubleSpinBox()
         self.interval_spin.setRange(0.1, 1800)
         self.interval_spin.setDecimals(2)
         self.interval_spin.setValue(center_config.get("interval", 1.0))
-        layout.addWidget(self.interval_spin)
+        auto_layout.addWidget(self.interval_spin)
+        
+        self.auto_widget = QWidget()
+        self.auto_widget.setLayout(auto_layout)
+        layout.addWidget(self.auto_widget)
         
         layout.addStretch()
         
@@ -113,15 +151,17 @@ class CenterAlignmentDialog(QDialog):
         
         self.key_signal = KeySignal()
         self.key_signal.captured.connect(self.on_key_captured)
+        self.capturing_key = None
     
     def on_mode_changed(self, mode):
         is_manual = mode == "Manual"
         self.manual_label.setVisible(is_manual)
-        self.key_btn.setVisible(is_manual)
+        self.manual_widget.setVisible(is_manual)
         self.auto_label.setVisible(not is_manual)
-        self.interval_spin.setVisible(not is_manual)
+        self.auto_widget.setVisible(not is_manual)
     
-    def capture_key(self):
+    def capture_key(self, key_num):
+        self.capturing_key = key_num
         QMessageBox.information(self, "Capture Key", "Press a key")
         
         def listen():
@@ -139,12 +179,18 @@ class CenterAlignmentDialog(QDialog):
         threading.Thread(target=listen, daemon=True).start()
     
     def on_key_captured(self, key):
-        self.key_btn.setText(key.upper())
+        if self.capturing_key == 1:
+            self.key1_btn.setText(key.upper())
+        elif self.capturing_key == 2:
+            self.key2_btn.setText(key.upper())
+        self.capturing_key = None
     
     def get_config(self):
         return {
             "mode": self.mode_combo.currentText(),
-            "trigger_key": self.key_btn.text().lower(),
+            "trigger_key1": self.key1_btn.text().lower(),
+            "trigger_key2": self.key2_btn.text().lower(),
+            "pattern": self.pattern_combo.currentText(),
             "interval": self.interval_spin.value()
         }
 
@@ -225,11 +271,18 @@ class MacroRow(QWidget):
         if is_center:
             mode = entry.get("center_config", {}).get("mode", "Auto")
             if mode == "Auto":
+                pattern = entry.get("center_config", {}).get("pattern", "Alternate Both")
                 interval = entry.get("center_config", {}).get("interval", 1.0)
-                info_text = f"Auto | {interval:.2f}s"
+                if pattern == "Alternate Both":
+                    info_text = f"Auto | Alt | {interval:.2f}s"
+                elif pattern == "Only ,.":
+                    info_text = f"Auto | ,. | {interval:.2f}s"
+                else:
+                    info_text = f"Auto | ., | {interval:.2f}s"
             else:
-                trigger = entry.get("center_config", {}).get("trigger_key", "f")
-                info_text = f"Manual | {trigger.upper()}"
+                key1 = entry.get("center_config", {}).get("trigger_key1", "f")
+                key2 = entry.get("center_config", {}).get("trigger_key2", "g")
+                info_text = f"Manual | {key1.upper()}/{key2.upper()}"
             self.info_lbl = QLabel(info_text)
         else:
             repeat = entry.get("repeat", -1)
@@ -243,7 +296,7 @@ class MacroRow(QWidget):
             padding: 4px 10px;
             font-size: 12px;
         """)
-        self.info_lbl.setMinimumWidth(90)
+        self.info_lbl.setMinimumWidth(120)
 
         self.timer_lbl = QLabel("Ready")
         self.timer_lbl.setStyleSheet("""
@@ -314,11 +367,18 @@ class MacroRow(QWidget):
         if self.is_center:
             mode = self.entry.get("center_config", {}).get("mode", "Auto")
             if mode == "Auto":
+                pattern = self.entry.get("center_config", {}).get("pattern", "Alternate Both")
                 interval = self.entry.get("center_config", {}).get("interval", 1.0)
-                info_text = f"Auto | {interval:.2f}s"
+                if pattern == "Alternate Both":
+                    info_text = f"Auto | Alt | {interval:.2f}s"
+                elif pattern == "Only ,.":
+                    info_text = f"Auto | ,. | {interval:.2f}s"
+                else:
+                    info_text = f"Auto | ., | {interval:.2f}s"
             else:
-                trigger = self.entry.get("center_config", {}).get("trigger_key", "f")
-                info_text = f"Manual | {trigger.upper()}"
+                key1 = self.entry.get("center_config", {}).get("trigger_key1", "f")
+                key2 = self.entry.get("center_config", {}).get("trigger_key2", "g")
+                info_text = f"Manual | {key1.upper()}/{key2.upper()}"
             self.info_lbl.setText(info_text)
 
 
@@ -358,7 +418,9 @@ class MacroApp(QWidget):
             "is_center": True,
             "center_config": {
                 "mode": "Auto",
-                "trigger_key": "f",
+                "trigger_key1": "f",
+                "trigger_key2": "g",
+                "pattern": "Alternate Both",
                 "interval": 1.0
             }
         }
@@ -513,11 +575,16 @@ class MacroApp(QWidget):
         self.status.setText("Stopped")
     
     def setup_manual_trigger(self):
-        trigger_key = self.center_alignment["center_config"]["trigger_key"]
+        trigger_key1 = self.center_alignment["center_config"]["trigger_key1"]
+        trigger_key2 = self.center_alignment["center_config"]["trigger_key2"]
         
-        def on_trigger():
+        def on_trigger1():
             if self.runner.running:
-                self.runner.fire_center_alignment()
+                self.runner.fire_center_alignment(1)  # Fire ,. pattern
+        
+        def on_trigger2():
+            if self.runner.running:
+                self.runner.fire_center_alignment(2)  # Fire ., pattern
         
         try:
             if self.manual_trigger_listener:
@@ -525,17 +592,15 @@ class MacroApp(QWidget):
         except:
             pass
         
-        # Format key properly for GlobalHotKeys
-        # Function keys need <>, regular keys don't
-        if trigger_key.startswith('f') and len(trigger_key) <= 3 and trigger_key[1:].isdigit():
-            # Function key like f1, f2, f12
-            key_format = f"<{trigger_key}>"
-        else:
-            # Regular character key
-            key_format = trigger_key
+        # Format keys properly for GlobalHotKeys
+        def format_key(key):
+            if key.startswith('f') and len(key) <= 3 and key[1:].isdigit():
+                return f"<{key}>"
+            return key
         
         self.manual_trigger_listener = GlobalHotKeys({
-            key_format: on_trigger
+            format_key(trigger_key1): on_trigger1,
+            format_key(trigger_key2): on_trigger2
         })
         self.manual_trigger_listener.start()
     
